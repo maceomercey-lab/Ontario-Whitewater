@@ -1,2 +1,2 @@
 # Ontario-Whitewater
-Interactive map of Ontario Whitewater runs 
+Interactive map of Ontario Whitewater runs
