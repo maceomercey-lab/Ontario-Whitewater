@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ontario Whitewater — run finder</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FFF6ED;
+    --surface:#FFFFFF;
+    --surface-2:#FFEEDC;
+    --ink:#4A2E2A;
+    --ink-dim:#9C7A6C;
+    --ink-faint:#D9BFAE;
+    --line:#F3DFC9;
+    --coral:#FF6F59;
+    --coral-deep:#E14F3B;
+    --amber:#FFB238;
+    --amber-deep:#E0921A;
+    --plum:#7A4869;
+    --plum-deep:#5C3450;
+    --grad:linear-gradient(90deg,#7A4869 0%,#FF6F59 55%,#FFB238 100%);
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);font-family:'Nunito',sans-serif;}
+  h1,h2,h3{font-family:'Baloo 2',cursive;font-weight:700;margin:0;}
+
+  .topbar{
+    position:relative;z-index:1000;
+    display:flex;align-items:center;gap:14px;
+    padding:14px 22px;background:var(--surface);
+    border-bottom:1px solid var(--line);
+  }
+  .grad-strip{position:absolute;left:0;right:0;bottom:-3px;height:3px;background:var(--grad);}
+  .hamburger{
+    width:42px;height:42px;border-radius:14px;border:none;
+    background:var(--surface-2);color:var(--plum);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    box-shadow:0 3px 0 var(--line);transition:transform .08s;
+  }
+  .hamburger:active{transform:translateY(2px);box-shadow:0 1px 0 var(--line);}
+  .hamburger svg{width:19px;height:19px;}
+  .brand{display:flex;flex-direction:column;line-height:1.15;}
+  .brand .title{
+    font-size:20px;font-weight:700;
+    background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .brand .sub{font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;color:var(--ink-dim);letter-spacing:0.02em;}
+
+  .layout{position:relative;height:calc(100% - 65px);width:100%;overflow:hidden;}
+  #map{position:absolute;inset:0;background:#FBEFE2;}
+  .leaflet-container{background:#FBEFE2;font-family:'Nunito',sans-serif;}
+  .leaflet-control-zoom a{border-radius:10px !important;color:var(--plum) !important;}
+
+  .pin-wrap{display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 3px 3px rgba(74,46,42,0.28));}
+  .pin-dot{width:20px;height:20px;border-radius:50%;background:var(--coral);border:3px solid #fff;}
+  .pin-dot.putin{background:var(--amber);}
+  .pin-dot.takeout{background:var(--plum);}
+  .pin-dot.other{background:var(--ink-faint);}
+
+  .leaflet-tooltip.run-tip{
+    background:var(--surface);color:var(--ink);border:1px solid var(--line);
+    font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;padding:5px 11px;
+    border-radius:999px;box-shadow:0 2px 0 var(--line);
+  }
+  .leaflet-tooltip.run-tip::before{display:none;}
+
+  .preview-card{
+    position:absolute;left:20px;bottom:20px;z-index:900;
+    width:300px;max-width:calc(100vw - 40px);
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;display:none;box-shadow:0 8px 0 var(--line);
+  }
+  .preview-card.show{display:block;}
+  .preview-card .river-tag{font-size:11px;font-weight:800;color:var(--coral-deep);text-transform:uppercase;letter-spacing:0.04em;}
+  .preview-card h3{font-size:18px;margin-top:4px;}
+  .preview-card .region{font-size:12px;color:var(--ink-dim);margin-top:2px;font-weight:600;}
+  .preview-row{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:12px;color:var(--ink-dim);border-top:1px dashed var(--line);padding-top:12px;}
+  .grade-flag{
+    display:inline-flex;align-items:center;font-weight:800;font-size:12px;color:var(--coral-deep);
+    background:#FFE8E0;border:none;padding:5px 12px;border-radius:999px;
+  }
+  .gauge-line{font-weight:700;font-size:12px;}
+  .gauge-live{color:var(--plum);font-weight:800;font-variant-numeric:tabular-nums;}
+  .preview-hint{margin-top:10px;font-size:11px;color:var(--ink-faint);font-weight:700;}
+
+  .sidebar{
+    position:absolute;top:0;left:0;bottom:0;z-index:1100;
+    width:340px;max-width:88vw;background:var(--surface);
+    border-right:1px solid var(--line);
+    transform:translateX(-100%);transition:transform 0.22s ease;
+    display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:6px 0 24px rgba(122,72,105,0.08);
+  }
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line);}
+  .sidebar-head h2{font-size:18px;color:var(--plum);}
+  .close-btn{background:var(--surface-2);border:none;color:var(--ink-dim);cursor:pointer;font-size:18px;line-height:1;width:30px;height:30px;border-radius:10px;}
+  .close-btn:hover{color:var(--coral-deep);}
+  .tabs{display:flex;padding:12px 20px 0;gap:8px;}
+  .tab-btn{
+    flex:1;padding:10px 0;background:var(--surface-2);border:none;color:var(--ink-dim);
+    font-family:'Baloo 2',cursive;font-size:13px;border-radius:12px 12px 0 0;
+    cursor:pointer;font-weight:600;
+  }
+  .tab-btn.active{color:#fff;background:var(--coral);}
+  .tab-panel{display:none;padding:18px 20px;overflow-y:auto;flex:1;}
+  .tab-panel.active{display:block;}
+
+  label{display:block;font-size:12px;font-weight:800;color:var(--ink-dim);text-transform:uppercase;letter-spacing:0.03em;margin:14px 0 6px;}
+  label:first-child{margin-top:0;}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;background:var(--surface-2);border:2px solid transparent;border-radius:12px;
+    color:var(--ink);padding:10px 12px;font-family:'Nunito',sans-serif;font-size:13.5px;font-weight:600;
+  }
+  textarea{min-height:66px;resize:vertical;}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--coral);}
+  .pick-row{display:flex;gap:8px;margin-top:6px;}
+  .pick-btn{
+    flex:1;padding:9px 6px;border-radius:12px;border:none;
+    background:var(--surface-2);color:var(--plum);font-size:12px;font-weight:800;cursor:pointer;
+  }
+  .pick-btn.set{background:#EAF6E9;color:#3C8F4C;}
+  .pick-btn.active-pick{background:var(--coral);color:#fff;}
+  .submit-btn{
+    margin-top:18px;width:100%;padding:12px;border-radius:14px;border:none;
+    background:var(--coral);color:#fff;font-family:'Baloo 2',cursive;font-weight:700;
+    font-size:14px;cursor:pointer;box-shadow:0 4px 0 var(--coral-deep);transition:transform .08s;
+  }
+  .submit-btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--coral-deep);}
+  .submit-btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .form-note{font-size:11.5px;color:var(--ink-faint);margin-top:12px;line-height:1.55;font-weight:600;}
+
+  .search-input{margin-bottom:14px;}
+  .search-results{display:flex;flex-direction:column;gap:8px;}
+  .search-item{
+    text-align:left;background:var(--surface-2);border:2px solid transparent;border-radius:14px;
+    padding:10px 13px;cursor:pointer;color:var(--ink);font-size:13.5px;font-weight:700;
+    width:100%;font-family:'Nunito',sans-serif;
+  }
+  .search-item:hover{border-color:var(--coral);}
+  .search-item .si-region{display:block;font-size:11.5px;color:var(--ink-dim);margin-top:2px;font-weight:600;}
+  .search-item .si-badge{
+    display:inline-block;margin-top:6px;font-size:10.5px;font-weight:800;
+    padding:2px 9px;border-radius:999px;background:#fff;color:var(--ink-faint);
+  }
+  .search-item .si-badge.curated{color:#fff;background:var(--plum);}
+  .empty-note{font-size:12.5px;color:var(--ink-faint);font-weight:600;}
+
+  .detail-overlay{
+    position:absolute;inset:0;z-index:1300;background:var(--bg);
+    display:none;overflow-y:auto;
+  }
+  .detail-overlay.show{display:block;}
+  .detail-inner{max-width:640px;margin:0 auto;padding:30px 24px 60px;}
+  .back-btn{
+    display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);
+    color:var(--plum);cursor:pointer;font-size:13px;font-weight:800;margin-bottom:20px;
+    padding:8px 16px;border-radius:999px;font-family:'Nunito',sans-serif;
+  }
+  .back-btn:hover{background:var(--surface-2);}
+  .detail-river-tag{font-size:12px;font-weight:800;color:var(--coral-deep);text-transform:uppercase;letter-spacing:0.04em;}
+  .detail-title{font-size:30px;margin-top:8px;color:var(--ink);}
+  .detail-region{color:var(--ink-dim);font-size:14px;margin-top:6px;font-weight:700;}
+  .detail-badges{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
+  .detail-badges .grade-flag.length{color:var(--plum-deep);background:#F1E7F0;}
+  .detail-desc{margin-top:22px;line-height:1.75;color:var(--ink);font-size:15px;font-weight:600;}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px;}
+  @media (max-width:520px){.detail-grid{grid-template-columns:1fr;}}
+  .detail-block{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;}
+  .detail-block .db-label{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-faint);}
+  .detail-block .db-name{font-size:14.5px;margin-top:7px;font-weight:700;}
+  .detail-block .db-coords{font-size:11.5px;color:var(--ink-dim);margin-top:5px;font-weight:600;font-variant-numeric:tabular-nums;}
+  .putin-block{border-left:4px solid var(--amber);}
+  .takeout-block{border-left:4px solid var(--plum);}
+  .gauge-block{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;}
+  .gauge-block a{color:var(--coral-deep);font-weight:800;}
+  .safety-note{
+    margin-top:28px;font-size:12.5px;color:var(--ink-dim);line-height:1.65;font-weight:600;
+    border-top:1px dashed var(--line);padding-top:18px;
+  }
+
+  .toast{
+    position:absolute;top:20px;left:50%;transform:translateX(-50%) translateY(-20px);z-index:1400;
+    background:var(--plum-deep);color:#fff;font-weight:800;font-size:13px;
+    padding:12px 20px;border-radius:999px;opacity:0;pointer-events:none;transition:all .25s ease;
+    box-shadow:0 6px 18px rgba(92,52,80,0.3);
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .pick-active-banner{
+    position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:1200;
+    background:var(--coral);color:#fff;font-weight:800;font-size:13px;
+    padding:10px 18px;border-radius:999px;display:none;box-shadow:0 4px 0 var(--coral-deep);
+  }
+  .pick-active-banner.show{display:block;}
+
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--surface-2);border-radius:4px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="grad-strip"></div>
+  <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <div class="brand">
+    <span class="title">Ontario Whitewater</span>
+    <span class="sub">Run finder &amp; gauge board</span>
+  </div>
+</div>
+
+<div class="layout">
+  <div id="map"></div>
+
+  <div class="pick-active-banner" id="pickBanner">Click the map to set the point</div>
+
+  <div class="preview-card" id="previewCard">
+    <span class="river-tag" id="pcRiver"></span>
+    <h3 id="pcName"></h3>
+    <div class="region" id="pcRegion"></div>
+    <div class="preview-row">
+      <span class="grade-flag" id="pcGrade"></span>
+      <span class="gauge-line" id="pcGauge"></span>
+    </div>
+    <div class="preview-hint">Click the pin for the full run page</div>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <h2>Menu</h2>
+      <button class="close-btn" id="closeSidebar">&times;</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="search">Search rivers</button>
+      <button class="tab-btn" data-tab="add">Add a run</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-search">
+      <input type="text" class="search-input" id="searchInput" placeholder="Try &quot;Petawawa&quot; or &quot;Spanish River&quot;">
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-add">
+      <label>Run name</label>
+      <input type="text" id="addName" placeholder="e.g. Elora Gorge run">
+      <label>River</label>
+      <input type="text" id="addRiver" placeholder="e.g. Grand River">
+      <label>Region</label>
+      <input type="text" id="addRegion" placeholder="e.g. Elora, ON">
+      <label>Grade</label>
+      <select id="addGrade">
+        <option>I</option><option>I–II</option><option>II</option><option>II–III</option>
+        <option>III</option><option>III–IV</option><option>IV</option><option>IV–V</option><option>V+</option>
+      </select>
+      <label>Description</label>
+      <textarea id="addDesc" placeholder="Notable rapids, hazards, best season to run it..."></textarea>
+      <label>Put-in and take-out</label>
+      <div class="pick-row">
+        <button class="pick-btn" id="pickPutIn" type="button">Set put-in on map</button>
+        <button class="pick-btn" id="pickTakeOut" type="button">Set take-out on map</button>
+      </div>
+      <label>Gauge reference (optional)</label>
+      <input type="text" id="addGaugeName" placeholder="e.g. Water Office station name">
+      <button class="submit-btn" id="submitRun" type="button">Add run to map</button>
+      <p class="form-note">After clicking a "set on map" button, click anywhere on the map to drop that point. Added runs are visible to everyone using this map.</p>
+    </div>
+  </div>
+
+  <div class="detail-overlay" id="detailOverlay">
+    <div class="detail-inner" id="detailInner"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const CURATED_RUNS = [
+  {
+    id:'ottawa-main', name:"Main Channel (Rocher Fendu)", river:"Ottawa River",
+    region:"Beachburg / Foresters Falls, ON", grade:"II–IV", length:"8 km",
+    description:"Big-volume playboating water on the Quebec border. Named rapids including Butcher's Knife, McCoy's and Coliseum run reliably all summer thanks to upstream dam releases — the classic Ottawa Valley day and home to several kayak schools and outfitters.",
+    putIn:{name:"McCoy's Rapids access, Herron Rd", lat:45.734, lng:-76.867},
+    takeOut:{name:"Rocher Fendu take-out, Radiant Rd", lat:45.706, lng:-76.795},
+    gaugeName:"Ottawa River (Rocher Fendu reach)", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'madawaska-upper', name:"Upper Madawaska", river:"Madawaska River",
+    region:"Whitney, ON (Algonquin Park boundary)", grade:"I–IV", length:"27 km",
+    description:"A spring-fed run from Whitney to the Victoria–McCauley Lake Road bridge with about 15 rapids. Mandatory portages at Herman's Chute and Little Niagara. Usually only runnable through May before it drops too low.",
+    putIn:{name:"Whitney access, Hwy 60", lat:45.499, lng:-78.219},
+    takeOut:{name:"Victoria–McCauley Lake Rd bridge", lat:45.360, lng:-77.990},
+    gaugeName:"Madawaska River near Whitney", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'madawaska-palmer', name:"Palmer Rapids Run", river:"Madawaska River",
+    region:"Palmer Rapids, ON (Lower Madawaska Provincial Park)", grade:"II–III", length:"8 km",
+    description:"Often called the whitewater capital of Canada — a compact stretch of dependable play features near the Madawaska Kanu Centre, popular for both instruction and casual laps all summer.",
+    putIn:{name:"Palmer Rapids bridge access", lat:45.350, lng:-77.340},
+    takeOut:{name:"Aumond's Bay", lat:45.320, lng:-77.280},
+    gaugeName:"Madawaska River at Palmer Rapids", gaugeStation:"02KD004",
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/report/real_time_e.html?stn=02KD004"
+  },
+  {
+    id:'madawaska-flatwater', name:"Griffith to Burnstown", river:"Madawaska River",
+    region:"Griffith to Burnstown, ON", grade:"I (flatwater with moving sections)", length:"~25 km",
+    description:"The mellow counterpart to Palmer Rapids just downstream — wide, scenic flatwater paddling with a couple of easy riffles, good for a relaxed day between whitewater sessions.",
+    putIn:{name:"Griffith access", lat:45.250, lng:-76.860},
+    takeOut:{name:"Burnstown", lat:45.400, lng:-76.640},
+    gaugeName:"Madawaska River near Burnstown", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'petawawa-algonquin', name:"Lake Travers Section", river:"Petawawa River",
+    region:"Algonquin Provincial Park, ON", grade:"I–II (some mandatory portages)", length:"~30 km",
+    description:"Remote Algonquin Park classic reached via Achray Rd and the Sand Lake Gate. Schooner and Five Mile Rapids offer long stretches of unbroken Class I–II; several kilometres of portaging bypass the harder sections.",
+    putIn:{name:"Lake Travers via Achray Rd / Sand Lake Gate", lat:45.777, lng:-78.146},
+    takeOut:{name:"Poplar Rapids access", lat:45.720, lng:-77.900},
+    gaugeName:"Petawawa River (Algonquin Park reach)", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'gull-minden', name:"Minden Whitewater Preserve", river:"Gull River",
+    region:"Minden, ON (Haliburton Highlands)", grade:"II–IV", length:"0.8 km",
+    description:"An 800 m engineered whitewater feature that hosted the 2015 Pan Am Games. Maintained by Whitewater Ontario — a short, high-repetition run popular for training and freestyle.",
+    putIn:{name:"Preserve upper gate", lat:44.932, lng:-78.716},
+    takeOut:{name:"Preserve take-out, below the falls", lat:44.928, lng:-78.712},
+    gaugeName:"Gull River near Minden", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'grand-cambridge-paris', name:"Cambridge to Paris", river:"Grand River",
+    region:"Cambridge to Paris, ON", grade:"I (moving water)", length:"18 km",
+    description:"An easy-access, beginner-friendly stretch with swift current and forested bluffs that block out the city. Shallow water keeps power boats away — the classic Southern Ontario intro trip.",
+    putIn:{name:"Put-in beside the Petro-Canada, Hwy 24", lat:43.360, lng:-80.315},
+    takeOut:{name:"Paris, ON take-out", lat:43.202, lng:-80.383},
+    gaugeName:"Grand River near Cambridge/Paris", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'grand-elora-gorge', name:"Elora Gorge", river:"Grand River",
+    region:"Elora, ON", grade:"II–III", length:"3 km",
+    description:"A limestone gorge run past 22-metre cliffs — one of Ontario's most scenic whitewater stretches, managed by the Grand River Conservation Authority. Thrilling but hazard-prone at high flows, with strainers and undercuts to respect.",
+    putIn:{name:"Elora Gorge Conservation Area, upper access", lat:43.685, lng:-80.435},
+    takeOut:{name:"Lower gorge exit near David St bridge", lat:43.676, lng:-80.427},
+    gaugeName:"Grand River at Elora", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'humber-oldmill', name:"Old Mill Section", river:"Humber River",
+    region:"Toronto, ON", grade:"II (rain-dependent, urban)", length:"5 km",
+    description:"An urban surprise: after 30 mm+ of rain this creeky run through the west end delivers surfable waves and a couple of real drops, all within city limits. Scout the weirs — strong recirculation below.",
+    putIn:{name:"Above Old Mill, Dundas St W", lat:43.649, lng:-79.495},
+    takeOut:{name:"Humber Bay Park take-out", lat:43.632, lng:-79.475},
+    gaugeName:"Humber River near Toronto", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'credit-norval', name:"Terra Cotta to Norval", river:"Credit River",
+    region:"Terra Cotta to Norval, ON", grade:"I–II", length:"~12 km",
+    description:"A suburban Credit Valley run close to Mississauga and Toronto — mellow rapids, a good early-season warm-up, and easy shuttle logistics.",
+    putIn:{name:"Terra Cotta Conservation Area", lat:43.720, lng:-79.950},
+    takeOut:{name:"Norval access", lat:43.650, lng:-79.870},
+    gaugeName:"Credit River near Norval", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'ganaraska-porthope', name:"Ganaraska Creek Run", river:"Ganaraska River",
+    region:"Port Hope, ON", grade:"II (rain-dependent)", length:"~7 km",
+    description:"A short, punchy creek run that only comes in after significant rain — a favourite quick hit for the Toronto-area creeking crowd since it's less than 90 minutes from the city.",
+    putIn:{name:"Corbett's Dam access", lat:44.050, lng:-78.300},
+    takeOut:{name:"Port Hope harbour", lat:43.960, lng:-78.290},
+    gaugeName:"Ganaraska River near Port Hope", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'beaver-kimberley', name:"Kimberley to Heathcote", river:"Beaver River",
+    region:"Beaver Valley, near Kimberley, ON", grade:"II–III", length:"~9 km",
+    description:"A technical Niagara Escarpment creek run through the Beaver Valley, best caught during spring snowmelt or after a solid rain event.",
+    putIn:{name:"Kimberley bridge access", lat:44.400, lng:-80.550},
+    takeOut:{name:"Heathcote access", lat:44.440, lng:-80.600},
+    gaugeName:"Beaver River near Kimberley", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'boyne-shelburne', name:"Boyne Valley Run", river:"Boyne River",
+    region:"near Shelburne, ON", grade:"III–IV (technical creek)", length:"~6 km",
+    description:"A short, steep, technical creek run through Boyne Valley Provincial Park, popular with advanced boaters chasing a rain spike.",
+    putIn:{name:"Primrose access", lat:44.100, lng:-80.230},
+    takeOut:{name:"Boyne Valley Provincial Park take-out", lat:44.060, lng:-80.200},
+    gaugeName:"Boyne River near Shelburne", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'saugeen-durham', name:"Durham to Hanover", river:"Saugeen River",
+    region:"Grey/Bruce County, ON", grade:"I–II", length:"~30 km",
+    description:"A relaxed, scenic moving-water stretch through Grey and Bruce counties — a popular early-season multi-day trip with occasional easy riffles.",
+    putIn:{name:"Durham access", lat:44.180, lng:-80.820},
+    takeOut:{name:"Hanover access", lat:44.150, lng:-81.030},
+    gaugeName:"Saugeen River near Durham", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'black-muskoka', name:"Wilderness Park Run", river:"Black River",
+    region:"near Washago, ON (Muskoka)", grade:"I–II+", length:"~1.5 hr run",
+    description:"A near-north gem with tranquil scenery and energetic rapids that build at higher flows. Launch from the campground or Highway 169 bridge and take out at McMillan Side Road bridge for a lively play run.",
+    putIn:{name:"Highway 169 bridge access", lat:44.830, lng:-79.450},
+    takeOut:{name:"McMillan Side Road bridge", lat:44.800, lng:-79.440},
+    gaugeName:"Black River near Washago", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'onaping-sudbury', name:"High Falls Section", river:"Onaping River",
+    region:"near Sudbury, ON", grade:"III–IV", length:"~10 km",
+    description:"A Northern Ontario creeking classic named for its dramatic waterfall drop, which most parties portage. Reliable Shield-country rapids the rest of the way.",
+    putIn:{name:"Windy Lake access", lat:46.850, lng:-81.450},
+    takeOut:{name:"Below High Falls", lat:46.800, lng:-81.400},
+    gaugeName:"Onaping River near Sudbury", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'mattawa-northbay', name:"Champlain to Mattawa", river:"Mattawa River",
+    region:"near North Bay / Mattawa, ON", grade:"II", length:"~25 km",
+    description:"A historic voyageur route lined with dramatic granite cliffs, mixing mellow Class II rapids with long flat stretches — a gentler multi-day Shield trip.",
+    putIn:{name:"Samuel de Champlain Provincial Park access", lat:46.150, lng:-79.150},
+    takeOut:{name:"Town of Mattawa", lat:46.310, lng:-78.700},
+    gaugeName:"Mattawa River near Mattawa", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'spanish-espanola', name:"Agnew Lake to Espanola", river:"Spanish River",
+    region:"near Espanola, ON", grade:"II–III", length:"multi-day",
+    description:"A multi-day Shield wilderness trip through the La Cloche range, with dependable rapids and striking white quartzite ridgelines — a well-known intro to whitewater canoe and kayak tripping.",
+    putIn:{name:"Agnew Lake access", lat:46.350, lng:-82.200},
+    takeOut:{name:"Espanola take-out", lat:46.250, lng:-81.760},
+    gaugeName:"Spanish River near Espanola", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  },
+  {
+    id:'magnetawan-lower', name:"Lower Magnetawan", river:"Magnetawan River",
+    region:"Britt / Byng Inlet area, ON", grade:"II–III", length:"15 km",
+    description:"A quintessential Shield-country run mixing granite scenery with over five sets of dependable rapids on the way out to Georgian Bay.",
+    putIn:{name:"Distress Dam access", lat:45.850, lng:-80.150},
+    takeOut:{name:"Wilson's Falls area", lat:45.830, lng:-80.350},
+    gaugeName:"Magnetawan River (lower reach)", gaugeStation:null,
+    gaugeInfoUrl:"https://wateroffice.ec.gc.ca/search/real_time_e.html"
+  }
+];
+
+const OTHER_RIVERS = [
+  {name:"French River", region:"Hartley Bay area, ON", lat:45.98, lng:-80.53},
+  {name:"Missinaibi River", region:"remote north-eastern Ontario", lat:50.19, lng:-83.30},
+  {name:"Crowe River", region:"Marmora area, ON", lat:44.50, lng:-77.70},
+  {name:"Moira River", region:"Actinolite / Marmora, ON", lat:44.45, lng:-77.53},
+  {name:"Mississippi River (Ontario)", region:"near High Falls, ON", lat:45.00, lng:-76.50},
+  {name:"York River", region:"Bancroft, ON", lat:45.05, lng:-77.85},
+  {name:"Nith River", region:"New Hamburg, ON", lat:43.38, lng:-80.71},
+  {name:"Vermilion River", region:"near Sudbury, ON", lat:46.55, lng:-81.30},
+  {name:"Wanapitei River", region:"near Coniston / Sudbury, ON", lat:46.75, lng:-80.75}
+];
+
+function midpoint(a,b){return {lat:(a.lat+b.lat)/2, lng:(a.lng+b.lng)/2};}
+
+let userRuns = [];
+let allRuns = [...CURATED_RUNS];
+let runMarkers = {};
+let putInMarker = null, takeOutMarker = null;
+let pickMode = null;
+let tempPutIn = null, tempTakeOut = null;
+
+const map = L.map('map', {zoomControl:true, attributionControl:true}).setView([45.6, -78.5], 6);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom:19,
+  attribution:'&copy; OpenStreetMap contributors &copy; CARTO'
+}).addTo(map);
+
+function dotIcon(cls){
+  return L.divIcon({className:'', html:'<div class="pin-wrap"><div class="pin-dot '+cls+'"></div></div>', iconSize:[26,26], iconAnchor:[13,13]});
+}
+
+function renderRunPins(){
+  Object.values(runMarkers).forEach(m => map.removeLayer(m));
+  runMarkers = {};
+  allRuns.forEach(run => {
+    const pin = midpoint(run.putIn, run.takeOut);
+    const marker = L.marker([pin.lat, pin.lng], {icon:dotIcon('')}).addTo(map);
+    marker.bindTooltip(run.name, {className:'run-tip', direction:'top', offset:[0,-10]});
+    marker.on('mouseover', () => showPreview(run));
+    marker.on('mouseout', () => hidePreview());
+    marker.on('click', () => showDetail(run));
+    runMarkers[run.id] = marker;
+  });
+}
+
+function showPreview(run){
+  Object.entries(runMarkers).forEach(([id,m]) => {
+    if(id !== run.id) map.removeLayer(m);
+  });
+  const pi = run.putIn, to = run.takeOut;
+  putInMarker = L.marker([pi.lat,pi.lng], {icon:dotIcon('putin')}).addTo(map).bindTooltip('Put-in: '+pi.name, {className:'run-tip', direction:'top'});
+  takeOutMarker = L.marker([to.lat,to.lng], {icon:dotIcon('takeout')}).addTo(map).bindTooltip('Take-out: '+to.name, {className:'run-tip', direction:'top'});
+
+  document.getElementById('pcRiver').textContent = run.river;
+  document.getElementById('pcName').textContent = run.name;
+  document.getElementById('pcRegion').textContent = run.region;
+  document.getElementById('pcGrade').textContent = 'Class ' + run.grade;
+  const gaugeEl = document.getElementById('pcGauge');
+  gaugeEl.textContent = 'Checking gauge…';
+  document.getElementById('previewCard').classList.add('show');
+  fetchGauge(run, gaugeEl);
+}
+
+function hidePreview(){
+  if(putInMarker){ map.removeLayer(putInMarker); putInMarker = null; }
+  if(takeOutMarker){ map.removeLayer(takeOutMarker); takeOutMarker = null; }
+  renderRunPins();
+  document.getElementById('previewCard').classList.remove('show');
+}
+
+// --- Gauge lookups -----------------------------------------------------
+// Uses the Environment Canada Water Office real-time hydrometric API where
+// a station number is known; otherwise falls back to a generic note that
+// links out to the Water Office search page for that river.
+const gaugeCache = {};
+async function fetchGauge(run, el){
+  if(!run.gaugeStation){
+    el.innerHTML = '<a href="'+run.gaugeInfoUrl+'" target="_blank" rel="noopener" class="gauge-live" style="text-decoration:none;">Find gauge →</a>';
+    return;
+  }
+  if(gaugeCache[run.gaugeStation]){
+    el.innerHTML = gaugeCache[run.gaugeStation];
+    return;
+  }
+  try{
+    const url = 'https://wateroffice.ec.gc.ca/services/real_time_data/csv/inline?stations[]='+run.gaugeStation+'&parameters[]=47&start_date=1970-01-01&end_date=2100-01-01';
+    const resp = await fetch(url);
+    if(!resp.ok) throw new Error('bad response');
+    const text = await resp.text();
+    const lines = text.trim().split('\n');
+    const last = lines[lines.length-1].split(',');
+    const flow = last[last.length-1];
+    const html = '<span class="gauge-live">'+parseFloat(flow).toFixed(1)+' m³/s</span>';
+    gaugeCache[run.gaugeStation] = html;
+    el.innerHTML = html;
+  }catch(err){
+    el.innerHTML = '<a href="'+run.gaugeInfoUrl+'" target="_blank" rel="noopener" class="gauge-live" style="text-decoration:none;">View gauge →</a>';
+  }
+}
+
+// --- Detail overlay ------------------------------------------------------
+function showDetail(run){
+  const inner = document.getElementById('detailInner');
+  inner.innerHTML = `
+    <button class="back-btn" id="detailBack">← Back to map</button>
+    <div class="detail-river-tag">${run.river}</div>
+    <h1 class="detail-title">${run.name}</h1>
+    <div class="detail-region">${run.region}</div>
+    <div class="detail-badges">
+      <span class="grade-flag">Class ${run.grade}</span>
+      <span class="grade-flag length">${run.length}</span>
+    </div>
+    <p class="detail-desc">${run.description}</p>
+    <div class="detail-grid">
+      <div class="detail-block putin-block">
+        <div class="db-label">Put-in</div>
+        <div class="db-name">${run.putIn.name}</div>
+        <div class="db-coords">${run.putIn.lat.toFixed(4)}, ${run.putIn.lng.toFixed(4)}</div>
+      </div>
+      <div class="detail-block takeout-block">
+        <div class="db-label">Take-out</div>
+        <div class="db-name">${run.takeOut.name}</div>
+        <div class="db-coords">${run.takeOut.lat.toFixed(4)}, ${run.takeOut.lng.toFixed(4)}</div>
+      </div>
+    </div>
+    <div class="gauge-block">
+      <div class="db-label">Gauge reference</div>
+      <div class="db-name">${run.gaugeName}</div>
+      <div style="margin-top:8px;"><a href="${run.gaugeInfoUrl}" target="_blank" rel="noopener">Check current levels on the Water Office →</a></div>
+    </div>
+    <p class="safety-note">Conditions on Ontario rivers change quickly with rainfall, dam releases and season. Always confirm current water levels, scout unfamiliar rapids, and paddle within your skill level. This page is a planning reference, not a safety guarantee.</p>
+  `;
+  document.getElementById('detailOverlay').classList.add('show');
+  document.getElementById('detailBack').addEventListener('click', hideDetail);
+}
+function hideDetail(){
+  document.getElementById('detailOverlay').classList.remove('show');
+}
+
+// --- Sidebar / tabs --------------------------------------------------
+const sidebar = document.getElementById('sidebar');
+document.getElementById('hamburgerBtn').addEventListener('click', () => sidebar.classList.add('open'));
+document.getElementById('closeSidebar').addEventListener('click', () => sidebar.classList.remove('open'));
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+// --- Search ------------------------------------------------------------
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+
+function runSearch(query){
+  searchResults.innerHTML = '';
+  const q = query.trim().toLowerCase();
+  if(!q){
+    searchResults.innerHTML = '<p class="empty-note">Start typing to find a river or run — try a river name or a nearby town.</p>';
+    return;
+  }
+  const runMatches = allRuns.filter(r =>
+    r.name.toLowerCase().includes(q) ||
+    r.river.toLowerCase().includes(q) ||
+    r.region.toLowerCase().includes(q)
+  );
+  const otherMatches = OTHER_RIVERS.filter(r =>
+    r.name.toLowerCase().includes(q) || r.region.toLowerCase().includes(q)
+  );
+
+  if(runMatches.length === 0 && otherMatches.length === 0){
+    searchResults.innerHTML = '<p class="empty-note">No matches yet. Try a different river or town name, or add this run yourself from the "Add a run" tab.</p>';
+    return;
+  }
+
+  runMatches.forEach(run => {
+    const btn = document.createElement('button');
+    btn.className = 'search-item';
+    btn.innerHTML = `${run.name}<span class="si-region">${run.river} · ${run.region}</span><span class="si-badge curated">Class ${run.grade}</span>`;
+    btn.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      const pin = midpoint(run.putIn, run.takeOut);
+      map.flyTo([pin.lat, pin.lng], 11, {duration:0.6});
+      setTimeout(() => showDetail(run), 400);
+    });
+    searchResults.appendChild(btn);
+  });
+
+  otherMatches.forEach(r => {
+    const btn = document.createElement('button');
+    btn.className = 'search-item';
+    btn.innerHTML = `${r.name}<span class="si-region">${r.region}</span><span class="si-badge">Not yet mapped</span>`;
+    btn.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      map.flyTo([r.lat, r.lng], 9, {duration:0.6});
+      showToast(r.name + ' isn\'t mapped in detail yet — know a good run here? Add it!');
+    });
+    searchResults.appendChild(btn);
+  });
+}
+searchInput.addEventListener('input', () => runSearch(searchInput.value));
+runSearch('');
+
+// --- Add a run -----------------------------------------------------------
+const pickPutInBtn = document.getElementById('pickPutIn');
+const pickTakeOutBtn = document.getElementById('pickTakeOut');
+const pickBanner = document.getElementById('pickBanner');
+let pickMarkerPutIn = null, pickMarkerTakeOut = null;
+
+function setPickMode(mode){
+  pickMode = mode;
+  pickPutInBtn.classList.toggle('active-pick', mode === 'putin');
+  pickTakeOutBtn.classList.toggle('active-pick', mode === 'takeout');
+  if(mode){
+    pickBanner.textContent = 'Click the map to set the ' + (mode === 'putin' ? 'put-in' : 'take-out');
+    pickBanner.classList.add('show');
+    sidebar.classList.remove('open');
+  }else{
+    pickBanner.classList.remove('show');
+  }
+}
+pickPutInBtn.addEventListener('click', () => setPickMode(pickMode === 'putin' ? null : 'putin'));
+pickTakeOutBtn.addEventListener('click', () => setPickMode(pickMode === 'takeout' ? null : 'takeout'));
+
+map.on('click', (e) => {
+  if(!pickMode) return;
+  const {lat, lng} = e.latlng;
+  if(pickMode === 'putin'){
+    tempPutIn = {lat, lng, name:'Put-in ('+lat.toFixed(3)+', '+lng.toFixed(3)+')'};
+    if(pickMarkerPutIn) map.removeLayer(pickMarkerPutIn);
+    pickMarkerPutIn = L.marker([lat,lng], {icon:dotIcon('putin')}).addTo(map);
+    pickPutInBtn.textContent = 'Put-in set ✓';
+    pickPutInBtn.classList.add('set');
+  }else if(pickMode === 'takeout'){
+    tempTakeOut = {lat, lng, name:'Take-out ('+lat.toFixed(3)+', '+lng.toFixed(3)+')'};
+    if(pickMarkerTakeOut) map.removeLayer(pickMarkerTakeOut);
+    pickMarkerTakeOut = L.marker([lat,lng], {icon:dotIcon('takeout')}).addTo(map);
+    pickTakeOutBtn.textContent = 'Take-out set ✓';
+    pickTakeOutBtn.classList.add('set');
+  }
+  setPickMode(null);
+  sidebar.classList.add('open');
+  document.querySelector('.tab-btn[data-tab="add"]').click();
+});
+
+document.getElementById('submitRun').addEventListener('click', () => {
+  const name = document.getElementById('addName').value.trim();
+  const river = document.getElementById('addRiver').value.trim();
+  const region = document.getElementById('addRegion').value.trim();
+  const grade = document.getElementById('addGrade').value;
+  const desc = document.getElementById('addDesc').value.trim();
+  const gaugeName = document.getElementById('addGaugeName').value.trim();
+
+  if(!name || !river || !region){
+    showToast('Please fill in run name, river, and region.');
+    return;
+  }
+  if(!tempPutIn || !tempTakeOut){
+    showToast('Please set both a put-in and a take-out on the map.');
+    return;
+  }
+
+  const newRun = {
+    id: 'user-' + Date.now(),
+    name, river, region, grade,
+    length: 'user submitted',
+    description: desc || 'No description provided yet.',
+    putIn: tempPutIn,
+    takeOut: tempTakeOut,
+    gaugeName: gaugeName || 'Not specified',
+    gaugeStation: null,
+    gaugeInfoUrl: 'https://wateroffice.ec.gc.ca/search/real_time_e.html'
+  };
+
+  userRuns.push(newRun);
+  allRuns = [...CURATED_RUNS, ...userRuns];
+  renderRunPins();
+
+  // reset form
+  document.getElementById('addName').value = '';
+  document.getElementById('addRiver').value = '';
+  document.getElementById('addRegion').value = '';
+  document.getElementById('addDesc').value = '';
+  document.getElementById('addGaugeName').value = '';
+  if(pickMarkerPutIn){ map.removeLayer(pickMarkerPutIn); pickMarkerPutIn = null; }
+  if(pickMarkerTakeOut){ map.removeLayer(pickMarkerTakeOut); pickMarkerTakeOut = null; }
+  tempPutIn = null; tempTakeOut = null;
+  pickPutInBtn.textContent = 'Set put-in on map';
+  pickPutInBtn.classList.remove('set');
+  pickTakeOutBtn.textContent = 'Set take-out on map';
+  pickTakeOutBtn.classList.remove('set');
+
+  sidebar.classList.remove('open');
+  showToast('"' + name + '" added to the map!');
+});
+
+// --- Toast ---------------------------------------------------------------
+let toastTimer = null;
+function showToast(msg){
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+}
+
+// --- Init ------------------------------------------------------------
+renderRunPins();
+</script>
+</body>
+</html>
